@@ -101,25 +101,19 @@ func accountSnapshotKey(hash common.Hash) []byte {
 
 func main() {
 	count = make(map[string]int)
-	originDB, err := leveldb.OpenFile("../ethereum-builder/validator_3/chaindata", &opt.Options{ReadOnly: false})
+	originDB, err := leveldb.OpenFile("../../layer1/new_trie", &opt.Options{ReadOnly: false})
 	if err != nil {
 		panic(err)
 	}
 	defer originDB.Close()
 	log.Println("open originDB success")
 
-	targetDB, err := leveldb.OpenFile("../ethereum-builder/gethdata/geth/chaindata", nil)
+	targetDB, err := leveldb.OpenFile("../../ethereum-builder/gethdata/geth/chaindata", nil)
 	if err != nil {
 		panic(err)
 	}
 	defer targetDB.Close()
 	log.Println("open targetDB success")
-
-	//keyT := common.HexToHash("0xad6575b38ac2a460ef5682d2d079281f17b80bcc64eb13bdfdead9d6eac7771e")
-	//key := accountSnapshotKey(keyT)
-	//get, err := targetDB.Has(key, nil)
-	//log.Println("SnapshotAccount value: ", get, err)
-	//return
 
 	iter := originDB.NewIterator(nil, nil)
 	for iter.Next() {
@@ -134,13 +128,6 @@ func main() {
 }
 
 func handleKey(originDB, targetDB *leveldb.DB, key []byte, value []byte) {
-	//var h common.Hash
-	//copy(h[:], key[:])
-	//hHex := h.Hex()
-	//if strings.Contains(hHex, "0x98386b9f0ebc91c937e28cb969d867de8377a41770cd1d7baead7ae2fe0ecde4") {
-	//	log.Println(hHex, value)
-	//}
-	//return
 	switch {
 	case bytes.HasPrefix(key, headerPrefix) && len(key) == (len(headerPrefix)+8+common.HashLength):
 		count["header"]++
@@ -162,16 +149,16 @@ func handleKey(originDB, targetDB *leveldb.DB, key []byte, value []byte) {
 		//}
 	case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerTDSuffix):
 		count["headerTD"]++
-		//err := targetDB.Put(key, value, nil)
-		//if err != nil {
-		//	panic(err)
-		//}
+		err := targetDB.Put(key, value, nil)
+		if err != nil {
+			panic(err)
+		}
 	case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerHashSuffix):
 		count["headerHash"]++
-		//err := targetDB.Put(key, value, nil)
-		//if err != nil {
-		//	panic(err)
-		//}
+		err := targetDB.Put(key, value, nil)
+		if err != nil {
+			panic(err)
+		}
 	case bytes.HasPrefix(key, headerNumberPrefix) && len(key) == (len(headerNumberPrefix)+common.HashLength):
 		count["headerNumber"]++
 		//err := targetDB.Put(key, value, nil)
@@ -180,10 +167,10 @@ func handleKey(originDB, targetDB *leveldb.DB, key []byte, value []byte) {
 		//}
 	case len(key) == common.HashLength:
 		count["hash"]++
-		//err := targetDB.Put(key, value, nil)
-		//if err != nil {
-		//	panic(err)
-		//}
+		err := targetDB.Put(key, value, nil)
+		if err != nil {
+			panic(err)
+		}
 	case bytes.HasPrefix(key, CodePrefix) && len(key) == len(CodePrefix)+common.HashLength:
 		count["code"]++
 		err := targetDB.Put(key, value, nil)
@@ -202,16 +189,6 @@ func handleKey(originDB, targetDB *leveldb.DB, key []byte, value []byte) {
 		if err != nil {
 			panic(err)
 		}
-
-		//var h common.Hash
-		//copy(h[:], key[len(SnapshotAccountPrefix):])
-		//hHex := h.Hex()
-		//if hHex == "0xad6575b38ac2a460ef5682d2d079281f17b80bcc64eb13bdfdead9d6eac7771e" {
-		//	log.Println("SnapshotAccount key: ", hHex)
-		//	get, err2 := targetDB.Has(key, nil)
-		//	log.Println("SnapshotAccount value: ", get, err2)
-		//}
-		//log.Println("put SnapshotAccount key: ")
 	case bytes.HasPrefix(key, SnapshotStoragePrefix) && len(key) == (len(SnapshotStoragePrefix)+2*common.HashLength):
 		count["SnapshotStorage"]++
 		err := targetDB.Put(key, value, nil)
