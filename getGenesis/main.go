@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"log"
+	"math/big"
 )
 
 // The fields below define the low level database schema prefixing.
@@ -96,8 +99,36 @@ var (
 
 var count map[string]int
 
+type Account struct {
+	Nonce    uint64
+	Balance  *big.Int
+	Root     common.Hash // merkle root of the storage trie
+	CodeHash []byte
+}
+type Storage map[common.Hash]common.Hash
+type Code []byte
+
+var emptyRoot = common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
+var emptyCode = crypto.Keccak256(nil)
+
 func accountSnapshotKey(hash common.Hash) []byte {
 	return append(SnapshotAccountPrefix, hash.Bytes()...)
+}
+
+func storageSnapshotKey(accountHash, storageHash common.Hash) []byte {
+	return append(append(SnapshotStoragePrefix, accountHash.Bytes()...), storageHash.Bytes()...)
+}
+
+func storageSnapshotsKey(accountHash common.Hash) []byte {
+	return append(SnapshotStoragePrefix, accountHash.Bytes()...)
+}
+
+func codeKey(hash common.Hash) []byte {
+	return append(CodePrefix, hash.Bytes()...)
+}
+
+func preimageKey(hash common.Hash) []byte {
+	return append(preimagePrefix, hash.Bytes()...)
 }
 
 func main() {
@@ -115,6 +146,19 @@ func main() {
 	}
 	defer targetDB.Close()
 	log.Println("open targetDB success")
+
+	accH := common.HexToHash("0x092c24c96336801f15bf04b92a1543de30696d4dabf612c9426c9771d4041d81")
+	storH := common.HexToHash("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563")
+	key := storageSnapshotKey(accH, storH)
+	value, err := originDB.Get(key, nil)
+	fmt.Println(value, err, common.BytesToHash(value))
+
+	//t2 := common.HexToHash("0x52df0bdf5a5f92d8037cf11e50f13d8017aefc99d20a73c826416df79570d481")
+	t3 := common.HexToHash("0x092c24c96336801f15bf04b92a1543de30696d4dabf612c9426c9771d4041d81")
+	i := preimageKey(t3)
+	value, err = originDB.Get(i, nil)
+	fmt.Println(value, err, common.BytesToHash(value), common.BytesToAddress(value))
+	return
 
 	iter := originDB.NewIterator(nil, nil)
 	for iter.Next() {
@@ -174,10 +218,10 @@ func handleKey(originDB, targetDB *leveldb.DB, key []byte, value []byte) {
 		//}
 	case bytes.HasPrefix(key, CodePrefix) && len(key) == len(CodePrefix)+common.HashLength:
 		count["code"]++
-		err := targetDB.Put(key, value, nil)
-		if err != nil {
-			panic(err)
-		}
+		//err := targetDB.Put(key, value, nil)
+		//if err != nil {
+		//	panic(err)
+		//}
 	case bytes.HasPrefix(key, txLookupPrefix) && len(key) == (len(txLookupPrefix)+common.HashLength):
 		count["txLookup"]++
 		//err := targetDB.Put(key, value, nil)
@@ -186,30 +230,63 @@ func handleKey(originDB, targetDB *leveldb.DB, key []byte, value []byte) {
 		//}
 	case bytes.HasPrefix(key, SnapshotAccountPrefix) && len(key) == (len(SnapshotAccountPrefix)+common.HashLength):
 		count["SnapshotAccount"]++
-		err := targetDB.Put(key, value, nil)
-		if err != nil {
-			panic(err)
-		}
+		//err := targetDB.Put(key, value, nil)
+		//if err != nil {
+		//	panic(err)
+		//}
 	case bytes.HasPrefix(key, SnapshotStoragePrefix) && len(key) == (len(SnapshotStoragePrefix)+2*common.HashLength):
 		count["SnapshotStorage"]++
-		err := targetDB.Put(key, value, nil)
-		if err != nil {
-			panic(err)
-		}
+		//err := targetDB.Put(key, value, nil)
+		//if err != nil {
+		//	panic(err)
+		//}
 	case bytes.HasPrefix(key, preimagePrefix) && len(key) == (len(preimagePrefix)+common.HashLength):
 		count["preimage"]++
 		//err := targetDB.Put(key, value, nil)
 		//if err != nil {
 		//	panic(err)
 		//}
-		//if strings.Contains(common.BytesToHash(key).String(), "20c076531c60585df9fb1e9d0fbcd3053423116fdc93d8611927297661de704") {
-		//	fmt.Println(value)
-		//	fmt.Println(common.BytesToHash(value))
-		//	fmt.Println(common.BytesToAddress(value))
-		//	return
-		//}
-		fmt.Println(common.BytesToAddress(value))
-		return
+		address := common.BytesToAddress(value)
+		hasher := crypto.NewKeccakState()
+		h := crypto.HashData(hasher, address.Bytes())
+		snapshotKey := accountSnapshotKey(h)
+
+		accData, err := originDB.Get(snapshotKey, nil)
+		if err != nil {
+			fmt.Errorf("get account error: %s", err)
+		} else {
+			account := new(Account)
+			err = rlp.DecodeBytes(accData, account)
+			if err != nil {
+				fmt.Errorf("get account error: %s", err)
+			} else {
+				fmt.Println(address, account.Balance, account.Nonce, account.Root, account.Root == emptyRoot, bytes.Equal(account.CodeHash, emptyCode), common.BytesToHash(account.CodeHash))
+
+				if !bytes.Equal(account.CodeHash, emptyCode) {
+					i := codeKey(common.BytesToHash(account.CodeHash))
+					codeData, err := originDB.Get(i, nil)
+					if err != nil {
+						fmt.Errorf("get code error: %s", err, codeData)
+					}
+				}
+			}
+		}
+
+		storageKey := storageSnapshotsKey(h)
+		storData, err := originDB.Get(storageKey, nil)
+		if len(storData) != 0 {
+			storage := make(Storage)
+			err = rlp.DecodeBytes(storData, &storage)
+			if err != nil {
+				fmt.Errorf("get storage error: %s", err)
+				return
+			} else {
+				for k, v := range storage {
+					fmt.Println(k, v)
+				}
+			}
+		}
+
 	case bytes.HasPrefix(key, bloomBitsPrefix) && len(key) == (len(bloomBitsPrefix)+10+common.HashLength):
 		count["bloomBits"]++
 		//err := targetDB.Put(key, value, nil)

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"log"
+	"math/big"
 )
 
 // The fields below define the low level database schema prefixing.
@@ -109,7 +111,7 @@ func main() {
 	defer originDB.Close()
 	log.Println("open originDB success")
 
-	targetDB, err := leveldb.OpenFile("./test", nil)
+	targetDB, err := leveldb.OpenFile("./gethdata/geth/chaindata", nil)
 	if err != nil {
 		panic(err)
 	}
@@ -126,6 +128,13 @@ func main() {
 	for k, v := range count {
 		log.Printf("key: %s, count: %d", k, v)
 	}
+}
+
+type Account struct {
+	Nonce    uint64
+	Balance  *big.Int
+	Root     []byte
+	CodeHash []byte
 }
 
 func handleKey(originDB, targetDB *leveldb.DB, key []byte, value []byte) {
@@ -174,10 +183,10 @@ func handleKey(originDB, targetDB *leveldb.DB, key []byte, value []byte) {
 		//}
 	case bytes.HasPrefix(key, CodePrefix) && len(key) == len(CodePrefix)+common.HashLength:
 		count["code"]++
-		err := targetDB.Put(key, value, nil)
-		if err != nil {
-			panic(err)
-		}
+		//err := targetDB.Put(key, value, nil)
+		//if err != nil {
+		//	panic(err)
+		//}
 	case bytes.HasPrefix(key, txLookupPrefix) && len(key) == (len(txLookupPrefix)+common.HashLength):
 		count["txLookup"]++
 		//err := targetDB.Put(key, value, nil)
@@ -186,30 +195,32 @@ func handleKey(originDB, targetDB *leveldb.DB, key []byte, value []byte) {
 		//}
 	case bytes.HasPrefix(key, SnapshotAccountPrefix) && len(key) == (len(SnapshotAccountPrefix)+common.HashLength):
 		count["SnapshotAccount"]++
-		err := targetDB.Put(key, value, nil)
-		if err != nil {
+		//err := targetDB.Put(key, value, nil)
+		//if err != nil {
+		//	panic(err)
+		//}
+		account := new(Account)
+		if err := rlp.DecodeBytes(value, account); err != nil {
 			panic(err)
 		}
+		fmt.Println("-------------------")
+		fmt.Println(common.BytesToHash(key[len(SnapshotAccountPrefix):]))
+		fmt.Println(common.BytesToHash(account.Root))
+		fmt.Println(common.BytesToHash(account.CodeHash))
+		fmt.Println(account.Balance)
+		fmt.Println(account.Nonce)
 	case bytes.HasPrefix(key, SnapshotStoragePrefix) && len(key) == (len(SnapshotStoragePrefix)+2*common.HashLength):
 		count["SnapshotStorage"]++
-		err := targetDB.Put(key, value, nil)
-		if err != nil {
-			panic(err)
-		}
+		//err := targetDB.Put(key, value, nil)
+		//if err != nil {
+		//	panic(err)
+		//}
 	case bytes.HasPrefix(key, preimagePrefix) && len(key) == (len(preimagePrefix)+common.HashLength):
 		count["preimage"]++
 		//err := targetDB.Put(key, value, nil)
 		//if err != nil {
 		//	panic(err)
 		//}
-		//if strings.Contains(common.BytesToHash(key).String(), "20c076531c60585df9fb1e9d0fbcd3053423116fdc93d8611927297661de704") {
-		//	fmt.Println(value)
-		//	fmt.Println(common.BytesToHash(value))
-		//	fmt.Println(common.BytesToAddress(value))
-		//	return
-		//}
-		fmt.Println(common.BytesToAddress(value))
-		return
 	case bytes.HasPrefix(key, bloomBitsPrefix) && len(key) == (len(bloomBitsPrefix)+10+common.HashLength):
 		count["bloomBits"]++
 		//err := targetDB.Put(key, value, nil)
